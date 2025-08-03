@@ -1,0 +1,20 @@
+# Core
+numpy
+pandas
+scikit-learn
+tqdm
+pyyaml
+
+# Embeddings + Transformers
+sentence-transformers>=2.2.2
+transformers>=4.38.2
+torch>=1.13.0
+
+# Optional: to suppress TF-related issues
+tf-keras  # To avoid the Keras 3 compatibility crash if needed
+
+# Fast nearest neighbor search (optional, for later use)
+faiss-cpu
+
+# For argument parsing and .env if needed
+python-dotenv
