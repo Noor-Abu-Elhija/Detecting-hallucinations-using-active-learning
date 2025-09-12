@@ -15,4 +15,9 @@ def get_args():
     parser.add_argument('--embedding_model', type=str, default='all-MiniLM-L6-v2',
                         help='Sentence transformer model name')
 
+    #Falcon7B paramters
+    parser.add_argument('--num_generations', type=int, default=5, help='How many answers to generate per question')
+    parser.add_argument('--temperature', type=float, default=0.9,
+                        help='Sampling temperature for generation (higher = more diverse)')
+
     return parser.parse_args()
