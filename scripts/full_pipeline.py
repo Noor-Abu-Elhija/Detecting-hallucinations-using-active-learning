@@ -1,7 +1,6 @@
 # scripts/full_pipeline.py
 import os, sys
-os.environ["TRANSFORMERS_NO_TF"] = "1"  # silence TF in transformers/sentence-transformers
-# ensure src/ is importable when running from scripts/
+os.environ["TRANSFORMERS_NO_TF"] = "1"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
@@ -9,14 +8,12 @@ from sentence_transformers import SentenceTransformer
 from src.feature_extraction import compute_embedding_entropy
 from src.active_selector import select_by_uncertainty
 from src.ann_verifier import ANNVerifier
+from src.nli import NLI  # <— NEW
 
+ANN_THRESHOLD = 0.92  # stricter to reduce false positives
 
 def main():
-    print(">>> starting full_pipeline...", flush=True)
-
-    # -------------------------------------------------------------------------
-    # 1) Candidate responses (replace later with Falcon completions)
-    # -------------------------------------------------------------------------
+    # 1) Candidate responses (swap later with Falcon generations)
     responses = [
         "Paris is the capital of France.",
         "Einstein invented the light bulb.",
@@ -25,46 +22,23 @@ def main():
         "Shakespeare wrote The Great Gatsby.",
         "Mount Everest is the tallest mountain.",
     ]
-    print(f">>> {len(responses)} responses loaded.", flush=True)
 
-    # -------------------------------------------------------------------------
-    # 2) Encode responses
-    #    Tip: first run may take time to download the model; next runs are fast.
-    # -------------------------------------------------------------------------
-    print(">>> loading SentenceTransformer (first run may download the model)...", flush=True)
-    # You can swap to a smaller model if downloads are slow: "paraphrase-MiniLM-L3-v2"
-    model_name = "all-MiniLM-L6-v2"
-    model = SentenceTransformer(model_name)
-    print(f">>> model '{model_name}' loaded. Encoding responses...", flush=True)
+    # 2) Encode
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    emb = model.encode(responses, convert_to_numpy=True).astype("float32")
 
-    embeddings = model.encode(responses, convert_to_numpy=True).astype("float32")
-    print(">>> responses encoded.", flush=True)
+    # 3) Entropy per item (neighbors = others)
+    ent = []
+    for i, e in enumerate(emb):
+        neighbors = np.delete(emb, i, axis=0)
+        ent.append(compute_embedding_entropy(e, neighbors))
+    ent = np.array(ent, dtype=np.float32)
 
-    # -------------------------------------------------------------------------
-    # 3) Compute per-item semantic entropy (neighbors = all other items)
-    # -------------------------------------------------------------------------
-    print(">>> computing semantic entropies...", flush=True)
-    uncertainties = []
-    for i, emb in enumerate(embeddings):
-        neighbors = np.delete(embeddings, i, axis=0)
-        ent = compute_embedding_entropy(emb, neighbors)
-        uncertainties.append(ent)
-    uncertainties = np.array(uncertainties, dtype=np.float32)
+    # pick the most uncertain items
+    top_indices = select_by_uncertainty(ent, top_k=2)
 
-    # show top uncertainties
-    top_k = 2
-    print(f">>> selecting top-{top_k} most uncertain samples...", flush=True)
-    top_indices = select_by_uncertainty(uncertainties, top_k=top_k)
-
-    print("\nTop uncertain responses:")
-    for i in top_indices:
-        print(f"[{i}] entropy={uncertainties[i]:.4f}  →  {responses[i]}", flush=True)
-
-    # -------------------------------------------------------------------------
-    # 4) Build small trusted corpus + ANN verifier (cosine similarity)
-    #    Later: replace with Wikipedia/SQuAD chunks + cached embeddings.
-    # -------------------------------------------------------------------------
-    trusted_corpus = [
+    # 4) Tiny trusted corpus + ANN
+    trusted = [
         "Paris is the capital of France.",
         "Water boils at 100 degrees Celsius.",
         "Mount Everest is the tallest mountain.",
@@ -72,23 +46,40 @@ def main():
         "The Eiffel Tower is in Paris.",
         "F. Scott Fitzgerald wrote The Great Gatsby.",
     ]
-    print("\n>>> encoding trusted corpus and building ANN index...", flush=True)
-    trusted_embeddings = model.encode(trusted_corpus, convert_to_numpy=True).astype("float32")
-    verifier = ANNVerifier(trusted_embeddings)
-    print(">>> ANN verifier ready (cosine-based).", flush=True)
+    trusted_emb = model.encode(trusted, convert_to_numpy=True).astype("float32")
+    verifier = ANNVerifier(trusted_emb)
 
-    # -------------------------------------------------------------------------
-    # 5) Verify the most-uncertain answers against trusted sources
-    # -------------------------------------------------------------------------
-    print("\nVerification results:")
+    # 5) NLI checker
+    nli = NLI()  # facebook/bart-large-mnli
+
+    # 6) Verify top uncertain answers with ANN + NLI
+    results = []
     for i in top_indices:
-        is_supported, max_sim, idxs = verifier.verify(embeddings[i], k=5, threshold=0.80)
+        is_supported_ann, max_sim, idxs = verifier.verify(emb[i], k=5, threshold=ANN_THRESHOLD)
         nearest_idx = int(idxs[0]) if len(idxs) else -1
-        nearest_txt = trusted_corpus[nearest_idx] if nearest_idx >= 0 else "<none>"
+        nearest_txt = trusted[nearest_idx] if nearest_idx >= 0 else ""
 
-        print(f"[{i}] {responses[i]}", flush=True)
-        print(f"  Supported? {is_supported} | max_cosine={max_sim:.4f} | nearest='{nearest_txt}'", flush=True)
+        # NLI: does nearest_txt ENTAIL the candidate response?
+        nli_label, nli_conf, _scores = nli.predict(premise=nearest_txt, hypothesis=responses[i])
 
+        supported = bool(is_supported_ann and nli_label == "entailment")
+        results.append({
+            "idx": int(i),
+            "response": responses[i],
+            "entropy": float(ent[i]),
+            "max_cosine": float(max_sim),
+            "nearest_text": nearest_txt,
+            "nli_label": nli_label,
+            "nli_conf": float(nli_conf),
+            "supported": supported,
+        })
+
+    # concise output
+    for r in results:
+        print(f"[{r['idx']}] supported={r['supported']} | "
+              f"ent={r['entropy']:.4f} | cos={r['max_cosine']:.3f} | "
+              f"nli={r['nli_label']}({r['nli_conf']:.2f}) | "
+              f"resp='{r['response']}' | near='{r['nearest_text']}'")
 
 if __name__ == "__main__":
     main()
