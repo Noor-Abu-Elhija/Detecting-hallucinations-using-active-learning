@@ -26,6 +26,9 @@ def get_args():
                         help='How many answers to generate per question')
     parser.add_argument('--temperature', type=float, default=0.9,
                         help='Sampling temperature for generation (higher = more diverse)')
+    parser.add_argument('--question', type=str,
+                        help='Question to answer')
+
 
     return parser.parse_args()
 
