@@ -14,7 +14,9 @@ def get_args():
     # Active-learning toy loop
     parser.add_argument('--top_k', type=int, default=3,
                         help='Number of most uncertain samples to select')
-    parser.add_argument('--uncertainty_metric', type=str, choices=['variance', 'entropy'],
+    # ADDED: allow regular (token-level) entropy as a selection metric
+    parser.add_argument('--uncertainty_metric', type=str,
+                        choices=['variance', 'entropy', 'regular_entropy'],
                         default='variance', help='Which uncertainty metric to use')
     parser.add_argument('--num_neighbors', type=int, default=5,
                         help='Number of neighbors to compute uncertainty from')
@@ -29,6 +31,9 @@ def get_args():
     parser.add_argument('--question', type=str,
                         help='Question to answer')
 
+    # ADDED: normalize token entropy by log(V) to get values in [0,1]
+    parser.add_argument('--normalize_entropy', action='store_true',
+                        help='Normalize regular entropy by log(V) to get [0,1]')
 
     return parser.parse_args()
 
@@ -52,6 +57,11 @@ def get_full_pipeline_args():
                    help='Cosine similarity threshold for ANN support (0..1)')
     p.add_argument('--nli_model', type=str, default='facebook/bart-large-mnli',
                    help='HF model for NLI (entailment/neutral/contradiction)')
+
+    # ADDED: pass-through for normalization if you compute token entropy in this flow
+    p.add_argument('--normalize_entropy', action='store_true',
+                   help='Normalize regular entropy by log(V) to get [0,1]')
+
     return p.parse_args()
 
 
@@ -103,5 +113,9 @@ def get_eval_args():
     # Output
     p.add_argument('--save_json', type=str, default=None,
                    help='Optional path to save full JSON results')
+
+    # ADDED: pass-through normalization flag for token entropy in eval runs
+    p.add_argument('--normalize_entropy', action='store_true',
+                   help='Normalize regular entropy by log(V) to get [0,1]')
 
     return p.parse_args()
