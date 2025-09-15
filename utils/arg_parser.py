@@ -29,6 +29,18 @@ def get_args():
     parser.add_argument('--question', type=str,
                         help='Question to answer')
 
+    # === Regular entropy demo args (for scripts/test_regular_entropy.py) ===
+    # Note: we REUSE the existing --temperature above; no duplicate flag added.
+    parser.add_argument("--model_id", type=str, default="tiiuae/falcon-7b-instruct",
+                        help="HF causal LM to use; try 'gpt2' on CPU.")
+    parser.add_argument("--prompt", type=str, default="The capital of France is",
+                        help="Prompt to sample completions from.")
+    parser.add_argument("--num_samples", type=int, default=8,
+                        help="How many completions to sample for entropy computation.")
+    parser.add_argument("--max_new_tokens", type=int, default=24,
+                        help="Maximum tokens to generate per completion.")
+    parser.add_argument("--top_p", type=float, default=0.95,
+                        help="Nucleus sampling parameter (keep top cumulative probability mass).")
 
     return parser.parse_args()
 
