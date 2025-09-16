@@ -1,9 +1,9 @@
 # scripts/run_eval.py
 import os, sys, json, argparse
-from typing import List, Dict, Any, Tuple
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, classification_report
 
@@ -12,20 +12,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from src.ann_verifier import ANNVerifier
 from src.nli import NLI
-
-# Optional Falcon backend (GPU recommended)
-try:
-    from src.falcon_generate_logprobs import load_falcon_model, generate_with_logprobs
-    _HAS_FALCON_FILE = True
-except Exception:
-    _HAS_FALCON_FILE = False
-
+from src.corpus_index import CorpusIndex
 
 # -----------------------------
 # Generation backends
 # -----------------------------
 def _factual_prompt(q: str) -> str:
-    # nudges small models to answer cleanly
     return f"Answer briefly and factually: {q}\nAnswer:"
 
 def sample_completions_hf(
@@ -53,17 +45,24 @@ def sample_completions_hf(
     texts = tok.batch_decode(outputs, skip_special_tokens=True)
     return [t[len(prompt2):].strip() if t.startswith(prompt2) else t.strip() for t in texts]
 
+# Optional Falcon backend (GPU recommended)
+try:
+    from src.falcon_generate_logprobs import load_falcon_model, generate_with_logprobs
+    _HAS_FALCON = True
+except Exception:
+    _HAS_FALCON = False
+
 def sample_completions_falcon(
     prompt: str,
     num_return_sequences: int = 5,
     temperature: float = 0.7,
     max_new_tokens: int = 64,
 ) -> List[str]:
-    if not _HAS_FALCON_FILE:
+    if not _HAS_FALCON:
         raise RuntimeError("Falcon backend requested but src/falcon_generate_logprobs.py not found/importable.")
     tok, mdl = load_falcon_model("tiiuae/falcon-7b-instruct")
     prompt2 = _factual_prompt(prompt)
-    completions, _logprobs = generate_with_logprobs(
+    completions, _ = generate_with_logprobs(
         prompt=prompt2,
         model=mdl,
         tokenizer=tok,
@@ -71,7 +70,6 @@ def sample_completions_falcon(
         temperature=temperature,
         max_new_tokens=max_new_tokens,
     )
-    # strip the prompt we prepended (if present)
     return [c.strip() for c in completions]
 
 # ---------------------------------------
@@ -87,8 +85,8 @@ def semantic_entropy_simple(
     embs = embedder.encode(texts, convert_to_numpy=True).astype("float32")
     embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-12)
 
-    cluster_centroids = []
-    ids = []
+    cluster_centroids: List[Tuple[np.ndarray, int]] = []
+    ids: List[int] = []
     for v in embs:
         if not cluster_centroids:
             cluster_centroids.append([v.copy(), 1])
@@ -129,12 +127,24 @@ def evaluate(
     temperature: float = 0.8,
     ann_threshold: float = 0.90,
     agg: str = "any",                # "any" | "majority"
+    k: int = 5,
+    corpus_index: Optional[CorpusIndex] = None,
 ) -> Dict[str, Any]:
     embedder = SentenceTransformer(embed_model)
-    trusted_emb = embedder.encode(trusted_corpus, convert_to_numpy=True).astype("float32")
-    ann = ANNVerifier(trusted_emb)
     nli = NLI()
 
+    # retrieval setup
+    if corpus_index is None:
+        trusted_emb = embedder.encode(trusted_corpus, convert_to_numpy=True).astype("float32")
+        ann = ANNVerifier(trusted_emb)
+        texts_lookup = trusted_corpus
+        use_index = False
+    else:
+        ann = None
+        texts_lookup = corpus_index.texts
+        use_index = True
+
+    # generator
     if gen_backend == "falcon":
         gen_fn = lambda q: sample_completions_falcon(q, num_return_sequences=generations,
                                                      temperature=temperature, max_new_tokens=64)
@@ -153,10 +163,18 @@ def evaluate(
 
         comp_embs = embedder.encode(completions, convert_to_numpy=True).astype("float32")
         supported_flags, details = [], []
+
         for i, ce in enumerate(comp_embs):
-            is_sup, max_sim, idxs = ann.verify(ce, k=5, threshold=ann_threshold)
-            nearest_idx = int(idxs[0]) if len(idxs) else -1
-            nearest_txt = trusted_corpus[nearest_idx] if nearest_idx >= 0 else ""
+            if use_index:
+                sims, idxs = corpus_index.search(ce, k=k)
+                max_sim = float(sims[0]) if len(sims) else 0.0
+                nearest_idx = int(idxs[0]) if len(idxs) else -1
+                is_sup = (max_sim >= ann_threshold)
+            else:
+                is_sup, max_sim, idxs = ann.verify(ce, k=k, threshold=ann_threshold)
+                nearest_idx = int(idxs[0]) if len(idxs) else -1
+
+            nearest_txt = texts_lookup[nearest_idx] if nearest_idx >= 0 else ""
             label_nli, conf_nli, _ = nli.predict(premise=nearest_txt, hypothesis=completions[i])
             supported = bool(is_sup and label_nli == "entailment")
             supported_flags.append(supported)
@@ -170,15 +188,10 @@ def evaluate(
                 "supported": supported,
             })
 
-        if agg == "any":
-            pred_supported = (sum(supported_flags) >= 1)
-        else:  # majority
-            pred_supported = (sum(supported_flags) > (len(supported_flags) / 2))
-
+        pred_supported = (sum(supported_flags) >= 1) if agg == "any" else (sum(supported_flags) > len(supported_flags)/2)
         preds.append(int(pred_supported))
         if lbl is not None:
             labels.append(int(lbl))
-
         per_question.append({
             "question": qtext,
             "semantic_entropy": float(H),
@@ -201,7 +214,7 @@ def evaluate(
 # -------------
 # CLI
 # -------------
-def load_questions(path: str | None) -> List[Dict[str, Any]]:
+def load_questions(path: Optional[str]) -> List[Dict[str, Any]]:
     if path is None:
         return [
             {"question": "Who invented the light bulb?", "label": 1},
@@ -212,12 +225,11 @@ def load_questions(path: str | None) -> List[Dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line:
-                continue
-            data.append(json.loads(line))
+            if line:
+                data.append(json.loads(line))
     return data
 
-def load_trusted(path: str | None) -> List[str]:
+def load_trusted(path: Optional[str]) -> List[str]:
     if path is None:
         return [
             "Thomas Edison invented the light bulb.",
@@ -234,18 +246,21 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--dataset", type=str, default=None)
     p.add_argument("--trusted", type=str, default=None)
+    p.add_argument("--index_dir", type=str, default=None, help="Directory with index.faiss + embs.npy + meta.jsonl")
     p.add_argument("--embed_model", type=str, default="all-MiniLM-L6-v2")
     p.add_argument("--gen_backend", type=str, default="hf", choices=["hf", "falcon"])
     p.add_argument("--gen_model", type=str, default="gpt2")
     p.add_argument("--generations", type=int, default=5)
     p.add_argument("--temperature", type=float, default=0.8)
     p.add_argument("--ann_threshold", type=float, default=0.90)
+    p.add_argument("--k", type=int, default=5)
     p.add_argument("--agg", type=str, default="any", choices=["any", "majority"])
     p.add_argument("--save_json", type=str, default=None)
     return p.parse_args()
 
 def main():
     args = parse_args()
+    ci = CorpusIndex.load(args.index_dir) if args.index_dir else None
     questions = load_questions(args.dataset)
     trusted = load_trusted(args.trusted)
 
@@ -259,6 +274,8 @@ def main():
         temperature=args.temperature,
         ann_threshold=args.ann_threshold,
         agg=args.agg,
+        k=args.k,
+        corpus_index=ci,
     )
 
     if "metrics" in results:
