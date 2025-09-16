@@ -1,0 +1,28 @@
+name: project
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  # Core
+  - python=3.10
+  - numpy
+  - pandas
+  - scikit-learn
+  - tqdm
+  - pyyaml
+  - sentencepiece
+
+  # Optional system tools
+  - pip
+
+  # Install pip-only packages
+  - pip:
+      - sentence-transformers>=2.2.2
+      - transformers>=4.38.2
+      - torch>=1.13.0
+      - tf-keras       # Optional workaround for Keras 3 crash
+      - faiss-cpu
+      - python-dotenv
+      - accelerate
+      - tiktoken
