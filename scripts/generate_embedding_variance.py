@@ -6,8 +6,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 
 from sentence_transformers import SentenceTransformer
-st = SentenceTransformer(args.embedding_model, device="cpu")
-
 from scripts.generate_answers import load_falcon_model, generate_with_probs, format_prompt
 from utils.arg_parser import get_args
 from src.embedding_variance import (
@@ -37,15 +35,17 @@ def main():
         temperature=args.temperature,
     )
 
-    # 2) Embed answers
-    embed_model = getattr(args, "embedding_model", "all-MiniLM-L6-v2")
-    st = SentenceTransformer(embed_model)
+    # 2) Embed answers (force CPU to avoid CUDA on Tesla M60)
+    embed_model = getattr(args, "embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+    st = SentenceTransformer(embed_model, device="cpu")
     emb = st.encode(completions, convert_to_numpy=True).astype("float32")
 
     # 3) Global variance (weighted or unweighted)
     use_weighted = getattr(args, "weighted", False)
     if use_weighted:
-        centroid, per_var, overall = compute_embedding_variance_weighted(emb, np.asarray(sequence_probs))
+        centroid, per_var, overall = compute_embedding_variance_weighted(
+            emb, np.asarray(sequence_probs, dtype=np.float32)
+        )
     else:
         centroid, per_var, overall = compute_embedding_variance(emb)
 
@@ -56,12 +56,13 @@ def main():
         try:
             labels, cents, km_per_var, km_overall, cluster_vars = compute_kmeans_variance(emb, k)
             kmeans_result = {
-                "k": k,
+                "k": int(k),
                 "labels": labels,
                 "centroids": [c.tolist() for c in cents],
                 "per_answer_var": km_per_var.tolist(),
-                "overall_var": km_overall,
-                "cluster_variances": cluster_vars,
+                "overall_var": float(km_overall),
+                "cluster_variances": {str(ci): {"count": int(v["count"]), "variance": float(v["variance"])}
+                                      for ci, v in cluster_vars.items()},
             }
         except Exception as e:
             print(f"[warn] KMeans skipped: {e}")
@@ -71,13 +72,8 @@ def main():
     print(f"Question: {question}")
     print(f"Embedding model: {embed_model}  |  Weighted: {use_weighted}")
     for i, (c, v) in enumerate(zip(completions, per_var)):
-        print(f"[{i}] var_to_centroid={v:.6f} -> {c}")
-    print(f"\nGlobal centroid variance (mean squared distance): {overall:.6f}")
-
-    if kmeans_result:
-        print(f"\nKMeans(k={k}) overall mean within-cluster variance: {kmeans_result['overall_var']:.6f}")
-        for c, d in kmeans_result["cluster_variances"].items():
-            print(f"  cluster {c}: count={d['count']}  variance={d['variance']:.6f}")
+        print(f"[{i}] var_to_centroid={float(v):.6f} -> {c}")
+    print(f"\nGlobal centroid variance (mean squared distance): {float(overall):.6f}")
 
     # 6) Save JSON
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -91,7 +87,7 @@ def main():
         "embeddings_shape": [int(emb.shape[0]), int(emb.shape[1])],
         "global_centroid": centroid.tolist(),
         "per_answer_variance": per_var.tolist(),
-        "overall_variance": overall,
+        "overall_variance": float(overall),
         "kmeans": kmeans_result,
     }
     save_output(out_path, payload)
