@@ -43,13 +43,14 @@ def main():
     # 3) Global variance (weighted or unweighted)
     use_weighted = getattr(args, "weighted", False)
     if use_weighted:
-    # normalize sequence_probs so they form a probability vector
-    weights = np.asarray(sequence_probs, dtype=np.float64)
-    weights = np.clip(weights, 1e-40, 1.0)   # avoid zeros
-    weights /= weights.sum()
-    centroid, per_var, overall = compute_embedding_variance_weighted(emb, weights)
+        # normalize sequence_probs so they form a probability vector
+        weights = np.asarray(sequence_probs, dtype=np.float64)
+        weights = np.clip(weights, 1e-40, 1.0)   # avoid zeros
+        weights /= weights.sum()
+        centroid, per_var, overall = compute_embedding_variance_weighted(emb, weights)
     else:
         centroid, per_var, overall = compute_embedding_variance(emb)
+    
 
     # 4) Optional KMeans variance
     k = getattr(args, "k", 0)
