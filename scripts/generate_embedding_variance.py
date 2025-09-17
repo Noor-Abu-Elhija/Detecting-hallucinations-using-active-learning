@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 
 from sentence_transformers import SentenceTransformer
+st = SentenceTransformer(args.embedding_model, device="cpu")
 
 from scripts.generate_answers import load_falcon_model, generate_with_probs, format_prompt
 from utils.arg_parser import get_args
