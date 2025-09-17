@@ -42,6 +42,12 @@ def get_args():
     parser.add_argument("--top_p", type=float, default=0.95,
                         help="Nucleus sampling parameter (keep top cumulative probability mass).")
 
+    # Embedding variance options (for scripts/generate_embedding_variance.py)
+    parser.add_argument('--k', type=int, default=0,
+                        help='If >0, run KMeans with k clusters and report per-cluster variance')
+    parser.add_argument('--weighted', action='store_true',
+                        help='Weight variance by sequence probabilities')
+
     return parser.parse_args()
 
 
@@ -116,12 +122,6 @@ def get_eval_args():
     p.add_argument('--save_json', type=str, default=None,
                    help='Optional path to save full JSON results')
 
-
-    # Embedding variance options (for scripts/generate_embedding_variance.py)
-    parser.add_argument('--k', type=int, default=0,
-                        help='If >0, run KMeans with k clusters and report per-cluster variance')
-    parser.add_argument('--weighted', action='store_true',
-                        help='Weight variance by sequence probabilities')
 
 
     return p.parse_args()
