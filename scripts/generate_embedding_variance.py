@@ -40,6 +40,7 @@ def main():
     st = SentenceTransformer(embed_model, device="cpu")
     emb = st.encode(completions, convert_to_numpy=True).astype("float32")
 
+
     # 3) Global variance (weighted or unweighted)
     use_weighted = getattr(args, "weighted", False)
     if use_weighted:
@@ -50,7 +51,7 @@ def main():
         centroid, per_var, overall = compute_embedding_variance_weighted(emb, weights)
     else:
         centroid, per_var, overall = compute_embedding_variance(emb)
-    
+
 
     # 4) Optional KMeans variance
     k = getattr(args, "k", 0)
