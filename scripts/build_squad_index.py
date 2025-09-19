@@ -1,5 +1,6 @@
 # scripts/build_squad_index.py
 import os, sys, json
+
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -8,6 +9,7 @@ from datasets import load_dataset  # pip install datasets
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from src.corpus_index import chunk_text, CorpusIndex
+
 
 def load_squad_texts(split: str = "train") -> List[str]:
     ds = load_dataset("squad", split=split)  # small, perfect for a demo corpus
@@ -18,16 +20,26 @@ def load_squad_texts(split: str = "train") -> List[str]:
             texts.append(ch)
     return texts
 
+
 def main(index_dir: str = "indexes/squad", embed_model: str = "all-mpnet-base-v2", split="train"):
     os.makedirs(index_dir, exist_ok=True)
     print(f"Loading SQuAD ({split})…")
     texts = load_squad_texts(split=split)
     print(f"Got {len(texts)} chunks. Embedding with {embed_model}…")
-    emb = SentenceTransformer(embed_model).encode(texts, convert_to_numpy=True, batch_size=64, show_progress_bar=True).astype("float32")
+
+    # --- THIS IS THE MODIFIED SECTION ---
+    # Create the model object first, explicitly telling it to use the CPU
+    model = SentenceTransformer(embed_model, device='cpu')
+
+    # Now, use the model to encode the texts
+    emb = model.encode(texts, convert_to_numpy=True, batch_size=64, show_progress_bar=True).astype("float32")
+    # --- END OF MODIFIED SECTION ---
+
     print("Building index…")
     ci = CorpusIndex(embeddings=emb, doc_texts=texts)
     ci.save(index_dir)
     print(f"Saved index to {index_dir}")
+
 
 if __name__ == "__main__":
     # quick CLI: python -u scripts/build_squad_index.py
