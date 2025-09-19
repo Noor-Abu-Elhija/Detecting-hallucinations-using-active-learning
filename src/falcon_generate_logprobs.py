@@ -36,7 +36,9 @@ def generate_with_logprobs(prompt, model, tokenizer, num_return_sequences=5, tem
         num_return_sequences=num_return_sequences,
         output_scores=True,
         return_dict_in_generate=True,
-        pad_token_id=tokenizer.eos_token_id
+        pad_token_id=tokenizer.eos_token_id,
+        # --- THIS IS THE FIX ---
+        use_cache=False
     )
 
     sequences = outputs.sequences

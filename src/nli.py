@@ -12,7 +12,7 @@ class NLI:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         self.model.eval()
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cpu"
         self.model.to(device)
         self.device = device
         # Common MNLI label order for this model:

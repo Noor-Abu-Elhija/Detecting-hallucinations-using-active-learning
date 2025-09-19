@@ -130,7 +130,7 @@ def evaluate(
     k: int = 5,
     corpus_index: Optional[CorpusIndex] = None,
 ) -> Dict[str, Any]:
-    embedder = SentenceTransformer(embed_model)
+    embedder = SentenceTransformer(embed_model, device='cpu')
     nli = NLI()
 
     # retrieval setup
