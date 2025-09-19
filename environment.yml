@@ -3,8 +3,8 @@ channels:
   - defaults
   - conda-forge
   - pytorch
+  - nvidia            # ← add this for CUDA toolkit
 dependencies:
-  # Core
   - python=3.10
   - numpy
   - pandas
@@ -12,17 +12,20 @@ dependencies:
   - tqdm
   - pyyaml
   - sentencepiece
-
-  # Optional system tools
+  - pyarrow
+  # GPU PyTorch stack (pick CUDA version that matches `nvidia-smi`, 12.1 is common):
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
   - pip
-
-  # Install pip-only packages
   - pip:
       - sentence-transformers>=2.2.2
       - transformers>=4.38.2
-      - torch>=1.13.0
-      - tf-keras       # Optional workaround for Keras 3 crash
+      - tf-keras
       - faiss-cpu
       - python-dotenv
       - accelerate
       - tiktoken
+      - datasets
+      - "huggingface_hub[hf_xet]"
