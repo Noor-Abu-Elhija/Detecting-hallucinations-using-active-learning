@@ -3,29 +3,29 @@ channels:
   - defaults
   - conda-forge
   - pytorch
-  - nvidia            # ← add this for CUDA toolkit
+  - nvidia
 dependencies:
   - python=3.10
-  - numpy
+  - numpy<2.0      # <-- Downgraded numpy
   - pandas
   - scikit-learn
   - tqdm
   - pyyaml
   - sentencepiece
   - pyarrow
-  # GPU PyTorch stack (pick CUDA version that matches `nvidia-smi`, 12.1 is common):
-  - pytorch
-  - torchvision
-  - torchaudio
-  - pytorch-cuda=12.1
+  # GPU PyTorch stack for older GPUs (CUDA 11.7)
+  - pytorch=2.0.1
+  - torchvision=0.15.2
+  - torchaudio=2.0.2
+  - pytorch-cuda=11.7
   - pip
   - pip:
-      - sentence-transformers>=2.2.2
-      - transformers>=4.38.2
+      - sentence-transformers==2.7.0 # <-- Downgraded
+      - transformers==4.38.2        # <-- Downgraded
+      - accelerate==0.25.0          # <-- Downgraded
       - tf-keras
       - faiss-cpu
       - python-dotenv
-      - accelerate
       - tiktoken
       - datasets
       - "huggingface_hub[hf_xet]"
