@@ -70,7 +70,7 @@ def generate_with_probs(prompt, model, tokenizer, num_return_sequences=5, temper
         all_token_probs.append(token_probs)
         all_sequence_probs.append(sequence_prob)
 
-    return completions, all_token_probs, all_sequence_probs
+    return completions,  all_sequence_probs
 
 
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     tokenizer, model = load_falcon_model()
     tokenizer, model = load_falcon_model()
 
-    completions, token_probs, sequence_probs = generate_with_probs(
+    completions, sequence_probs = generate_with_probs(
         prompt,
         model,
         tokenizer,

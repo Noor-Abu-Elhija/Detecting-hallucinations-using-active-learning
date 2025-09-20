@@ -48,16 +48,11 @@ def get_args():
     parser.add_argument('--weighted', action='store_true',
                         help='Weight variance by sequence probabilities')
 
-    return parser.parse_args()
-
 
 # --------------------------------------------------------------------
 # New: Full-pipeline (demo) arguments
 # --------------------------------------------------------------------
-def get_full_pipeline_args():
-    """
-    Arguments tailored for scripts/full_pipeline.py
-    """
+
     p = argparse.ArgumentParser(description="Full pipeline: entropy → ANN → NLI (demo)")
 
     p.add_argument('--top_k', type=int, default=2,
@@ -70,16 +65,11 @@ def get_full_pipeline_args():
                    help='Cosine similarity threshold for ANN support (0..1)')
     p.add_argument('--nli_model', type=str, default='facebook/bart-large-mnli',
                    help='HF model for NLI (entailment/neutral/contradiction)')
-    return p.parse_args()
 
 
 # --------------------------------------------------------------------
 # New: Evaluation harness arguments (run_eval.py)
 # --------------------------------------------------------------------
-def get_eval_args():
-    """
-    Arguments for scripts/run_eval.py (evaluation + metrics).
-    """
     p = argparse.ArgumentParser(description="Evaluation: generation → semantic entropy → ANN+NLI → metrics")
 
     # Data
