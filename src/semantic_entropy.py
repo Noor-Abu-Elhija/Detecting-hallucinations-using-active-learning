@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 
 from scripts.generate_answers import load_falcon_model, generate_with_probs, format_prompt
-from src.semantic_entropy import EntailmentDeberta, get_semantic_ids, predictive_entropy_rao, logsumexp_by_id
+from src.clustring_with_entailment import EntailmentDeberta, get_semantic_ids, predictive_entropy_rao, logsumexp_by_id
 from utils.arg_parser import get_args
 
 
