@@ -21,7 +21,7 @@ def load_falcon_model(model_name="tiiuae/falcon-7b-instruct"):
 
 
 def format_prompt(question: str) -> str:
-    return f"Answer the following question in a single brief but complete sentence.\n\nQuestion: {question}\n\nAnswer:"
+    return f"Answer the following question with only the short direct answer (no full sentence, no repeating the question).\n\nQuestion: {question}\n\nAnswer:"
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM

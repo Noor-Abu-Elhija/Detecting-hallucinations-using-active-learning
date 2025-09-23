@@ -1,5 +1,6 @@
 # scripts/build_squad_index.py
 import os, sys, json
+from typing import List, Dict
 
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -12,13 +13,36 @@ from src.corpus_index import chunk_text, CorpusIndex
 
 
 def load_squad_texts(split: str = "train") -> List[str]:
-    ds = load_dataset("squad", split=split)  # small, perfect for a demo corpus
+    ds = load_dataset("squad", split=split)
     texts = []
     for item in ds:
         ctx = item["context"]
         for ch in chunk_text(ctx, max_tokens=180, overlap=30):
             texts.append(ch)
     return texts
+
+def load_squad_qa(split: str = "train") -> List[Dict[str, str]]:
+    """
+    Load SQuAD questions with their answers (without contexts).
+    Returns a list of dicts:
+        {"question": "...", "answers": ["...", "..."]}
+    """
+    if split not in {"train", "validation"}:
+        raise ValueError("split must be 'train' or 'validation'")
+
+    ds = load_dataset("squad_v2", split=split)
+    qa_pairs = []
+
+    for item in ds:
+        question = item["question"].strip()
+        answers = item["answers"]["text"] if item["answers"]["text"] else ["N/A"]
+
+        qa_pairs.append({
+            "question": question,
+            "answers": answers
+        })
+
+    return qa_pairs
 
 
 def main(index_dir: str = "indexes/squad", embed_model: str = "all-mpnet-base-v2", split="train"):

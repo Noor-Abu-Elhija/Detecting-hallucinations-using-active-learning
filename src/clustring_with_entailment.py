@@ -1,64 +1,90 @@
 import numpy as np
+
 from src.entailment import EntailmentDeberta
+from collections import defaultdict
+from scipy.special import logsumexp
+
+# --- 1) Better clustering: exact-match fast path + NLI for near-dupes ---
+def canonicalize(s: str) -> str:
+    return " ".join(s.strip().lower().split())
 
 def get_semantic_ids(completions, model, strict_entailment=False):
     """
-    Groups completions into semantic clusters based on pairwise entailment.
-    Returns a list of cluster IDs per completion.
+    Groups completions into semantic clusters.
+    1) exact-duplicate collapse (fast, robust for short phrases)
+    2) NLI-based merging for near-duplicates
+    Returns: list[int] cluster_id per completion (same length as completions)
     """
+    n = len(completions)
+    cluster_ids = [-1] * n
 
+    # Fast path: identical strings share a cluster immediately
+    canon_map = defaultdict(list)
+    for i, c in enumerate(completions):
+        canon_map[canonicalize(c)].append(i)
+
+    next_cluster = 0
+    assigned = set()
+    for canon, idxs in canon_map.items():
+        for idx in idxs:
+            cluster_ids[idx] = next_cluster
+            assigned.add(idx)
+        next_cluster += 1
+
+    # Helper for NLI equivalence
     def are_equivalent(a, b):
-        imp1 = model.check_implication(a, b)
+        imp1 = model.check_implication(a, b)  # e.g., 2=entailed, 1=neutral, 0=contradiction
         imp2 = model.check_implication(b, a)
-
-        print(f"[{a} → {b}] = {imp1}, [{b} → {a}] = {imp2}")  # Debug
         if strict_entailment:
-            return imp1 == 2 and imp2 == 2
-        else:
-            return imp1 == 2 and imp2 != 1  # <- use soft bi-entailment only
+            return (imp1 == 2) and (imp2 == 2)
+        # Soft bi-entailment: entail one way and not contradiction the other way
+        return (imp1 == 2 and imp2 != 0) or (imp2 == 2 and imp1 != 0)
 
-    cluster_ids = [-1] * len(completions)
-    next_cluster_id = 0
-    for i in range(len(completions)):
-        if cluster_ids[i] != -1:
+    # NLI merge pass for items not already grouped by exact match
+    for i in range(n):
+        if i in assigned:
             continue
-        cluster_ids[i] = next_cluster_id
-        for j in range(i + 1, len(completions)):
-            if cluster_ids[j] == -1 and are_equivalent(completions[i], completions[j]):
-                cluster_ids[j] = next_cluster_id
-        next_cluster_id += 1
+        if cluster_ids[i] == -1:
+            cluster_ids[i] = next_cluster
+            next_cluster += 1
+        for j in range(i + 1, n):
+            if j in assigned or cluster_ids[j] != -1:
+                continue
+            if are_equivalent(completions[i], completions[j]):
+                cluster_ids[j] = cluster_ids[i]
 
     return cluster_ids
 
-def logsumexp_by_id(cluster_ids, log_likelihoods, agg="sum_normalized"):
+# --- 2) Proper per-cluster mass in log-space (optionally averaged by size) ---
+def cluster_log_masses(cluster_ids, log_likelihoods, average_within_cluster=True):
     """
-    Groups log-likelihoods by semantic cluster and returns the aggregated log-probs.
+    Returns list of log-masses per cluster (unnormalized across clusters).
+    If average_within_cluster=True, divides each cluster's mass by its size.
     """
-    unique_ids = sorted(set(cluster_ids))
-    log_probs_per_cluster = []
+    masses = []
+    for uid in sorted(set(cluster_ids)):
+        idxs = [i for i, cid in enumerate(cluster_ids) if cid == uid]
+        ll = np.array([log_likelihoods[i] for i in idxs])  # log p_i
+        log_mass = logsumexp(ll)                           # log sum_i p_i in cluster
+        if average_within_cluster and len(idxs) > 0:
+            log_mass -= np.log(len(idxs))                  # average by cluster size
+        masses.append(log_mass)
+    return masses
 
-    for uid in unique_ids:
-        indices = [i for i, cid in enumerate(cluster_ids) if cid == uid]
-        ll_values = [log_likelihoods[i] for i in indices]
-
-        if agg == "sum_normalized":
-            ll_array = np.array(ll_values)
-            ll_array -= np.log(np.sum(np.exp(ll_array)))
-            logsumexp_value = np.log(np.sum(np.exp(ll_array)))
-        else:
-            raise ValueError("Unknown aggregation method")
-
-        log_probs_per_cluster.append(logsumexp_value)
-
-    return log_probs_per_cluster
-
-
-def predictive_entropy_rao(log_probs):
+# --- 3) Normalize across clusters (softmax in log space) ---
+def normalize_log_probs(log_masses):
     """
-    Rao's semantic entropy: -Σ p(x) log p(x)
-    where log_probs are already normalized.
+    Convert unnormalized log masses to normalized log probabilities over clusters.
     """
-    probs = np.exp(log_probs)
-    entropy = -np.sum(probs * log_probs)
-    return entropy
+    logZ = logsumexp(log_masses)                 # log sum_k exp(log_mass_k)
+    return [lm - logZ for lm in log_masses]      # log p_k
+
+# --- 4) Entropy from normalized log probabilities ---
+def predictive_entropy_from_logprobs(norm_log_probs):
+    """
+    H(p) = - sum_k p_k * log p_k
+    norm_log_probs must be normalized logs s.t. logsumexp = 0.
+    """
+    probs = np.exp(norm_log_probs)
+    return float(-np.sum(probs * norm_log_probs))
 

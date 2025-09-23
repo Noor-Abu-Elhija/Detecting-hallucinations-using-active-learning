@@ -29,9 +29,9 @@ def get_args(argv=None):
 
     # ---------- Metrics & decisions ----------
     g_metrics = p.add_argument_group("Metrics & Decisions")
-    g_metrics.add_argument('--metric', type=str, default=None,  # make explicit for eval harness
+    g_metrics.add_argument('--metric', type=str, default="all",  # make explicit for eval harness
                            choices=['semantic_entropy', 'entropy', 'variance',
-                                    'weighted variance', 'kmeans variance', 'ann'],
+                                    'weighted variance', 'kmeans variance', 'ann','all'],
                            help="Which metric to compute")
     g_metrics.add_argument('--sim_threshold', type=float, default=0.85,
                            help='Cosine threshold for clustering in semantic entropy')
@@ -53,8 +53,8 @@ def get_args(argv=None):
                        help='Max tokens to generate per completion')
     g_gen.add_argument('--top_p', type=float, default=0.95,
                        help='Nucleus sampling (used by some sampling demos)')
-    g_gen.add_argument('--question', type=str,
-                       help='Single-question entrypoint for certain demos')
+    g_gen.add_argument('--num_of_question', type=int,default= 10,
+                       help='number of question to use')
 
     # ---------- Models ----------
     g_models = p.add_argument_group("Models")
