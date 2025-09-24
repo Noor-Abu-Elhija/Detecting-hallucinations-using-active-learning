@@ -59,14 +59,14 @@ def evaluate_metrics(
     if metric == "variance" or metric == "all":
         # Note: Your script has multiple variance types, you can choose which one to use here
         # Using the simple one for now.
-        var = compute_embedding_variance(embedder.encode(completions))
-        results["variance"] = var
+        centroid, per_var, overall = compute_embedding_variance(embedder.encode(completions))
+        results["variance"] = overall
     if metric == "weighted variance" or metric == "all":
-        var = compute_embedding_variance_weighted(sequence_probs, k)
-        results["variance"] = var
+        centroid, per_var, overall = compute_embedding_variance_weighted(sequence_probs, k)
+        results["variance"] = overall
     if metric == "kmeans variance" or metric == "all":
-        var = compute_kmeans_variance(sequence_probs,k)
-        results["variance"] = var
+        labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(sequence_probs,k)
+        results["variance"] = overall
     # --- ANN METRIC WITH YOUR NLI FIX ---
     if metric == "ann" or metric == 'all':
         if corpus_index is None:
