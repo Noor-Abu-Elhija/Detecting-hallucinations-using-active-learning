@@ -62,11 +62,10 @@ def evaluate_metrics(
         centroid, per_var, overall = compute_embedding_variance(embedder.encode(completions))
         results["variance"] = overall
     if metric == "weighted variance" or metric == "all":
-        centroid, per_var, overall = compute_embedding_variance_weighted(sequence_probs, k)
+        centroid, per_var, overall =compute_embedding_variance_weighted(embedder.encode(completions),np.array(sequence_probs))
         results["variance"] = overall
     if metric == "kmeans variance" or metric == "all":
-        labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(sequence_probs,k)
-        results["variance"] = overall
+        labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(embedder.encode(completions), k=k)
     # --- ANN METRIC WITH YOUR NLI FIX ---
     if metric == "ann" or metric == 'all':
         if corpus_index is None:
