@@ -71,7 +71,7 @@ class CorpusIndex:
         distances, idxs = self.index.search(q2, k)
 
         # cosine similarity (dot product of normalized vectors) for the results.
-        retrieved_embs = self.embs[idxs[0]]
+        retrieved_embs = self.emb[idxs[0]]
         sims = (q2 @ retrieved_embs.T).ravel()
 
         return sims, idxs[0]
