@@ -3,25 +3,21 @@ from __future__ import annotations
 import os, json
 from typing import List, Dict, Any, Optional
 import numpy as np
-
+import faiss
 try:
     import faiss
-
     _HAS_FAISS = True
 except Exception:
     faiss = None
     _HAS_FAISS = False
 
-
 def _ensure_fp32(x: np.ndarray) -> np.ndarray:
     return x.astype(np.float32, copy=False)
-
 
 def _l2norm_rows(x: np.ndarray) -> np.ndarray:
     x = _ensure_fp32(x)
     n = np.linalg.norm(x, axis=1, keepdims=True) + 1e-12
     return x / n
-
 
 def chunk_text(text: str, max_tokens: int = 180, overlap: int = 30) -> List[str]:
     """
@@ -38,7 +34,6 @@ def chunk_text(text: str, max_tokens: int = 180, overlap: int = 30) -> List[str]
         i += max_tokens - overlap
     return chunks
 
-
 class CorpusIndex:
     """
     Stores:
@@ -47,7 +42,6 @@ class CorpusIndex:
       - faiss index: cosine via inner product on normalized vectors
     Save/Load to index_dir: {index.faiss, embs.npy, meta.jsonl}
     """
-
     def __init__(self, embeddings: np.ndarray, doc_texts: List[str]):
         self.emb = _l2norm_rows(embeddings)
         self.texts = doc_texts
@@ -63,19 +57,27 @@ class CorpusIndex:
             self.index = None
 
     def search(self, query_embedding: np.ndarray, k: int = 5):
+        """
+        Searches the index for the top-k most similar embeddings.
+
+        Returns:
+          (cosine_similarities: np.ndarray, indices: np.ndarray)
+        """
         q2 = query_embedding.astype(np.float32).reshape(1, -1)
-        # L2-normalize the query to prepare for cosine similarity
+        # L2-normalize the query vector to prepare for cosine similarity search
         faiss.normalize_L2(q2)
 
-        # Search the index
+        # Use FAISS to find the indices of the top-k nearest neighbors
         distances, idxs = self.index.search(q2, k)
 
-        # cosine similarity (dot product of normalized vectors) for the results.
+        # This is the crucial fix:
+        # We ignore the returned 'distances' and manually calculate the true
+        # cosine similarity (dot product of normalized vectors) for the top-k results.
+        # The variable for embeddings in your class is self.emb (singular).
         retrieved_embs = self.emb[idxs[0]]
         sims = (q2 @ retrieved_embs.T).ravel()
 
         return sims, idxs[0]
-
     def save(self, index_dir: str):
         os.makedirs(index_dir, exist_ok=True)
         np.save(os.path.join(index_dir, "embs.npy"), self.emb)
