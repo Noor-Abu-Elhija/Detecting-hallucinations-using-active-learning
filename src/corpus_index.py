@@ -6,18 +6,22 @@ import numpy as np
 
 try:
     import faiss
+
     _HAS_FAISS = True
 except Exception:
     faiss = None
     _HAS_FAISS = False
 
+
 def _ensure_fp32(x: np.ndarray) -> np.ndarray:
     return x.astype(np.float32, copy=False)
+
 
 def _l2norm_rows(x: np.ndarray) -> np.ndarray:
     x = _ensure_fp32(x)
     n = np.linalg.norm(x, axis=1, keepdims=True) + 1e-12
     return x / n
+
 
 def chunk_text(text: str, max_tokens: int = 180, overlap: int = 30) -> List[str]:
     """
@@ -34,6 +38,7 @@ def chunk_text(text: str, max_tokens: int = 180, overlap: int = 30) -> List[str]
         i += max_tokens - overlap
     return chunks
 
+
 class CorpusIndex:
     """
     Stores:
@@ -42,6 +47,7 @@ class CorpusIndex:
       - faiss index: cosine via inner product on normalized vectors
     Save/Load to index_dir: {index.faiss, embs.npy, meta.jsonl}
     """
+
     def __init__(self, embeddings: np.ndarray, doc_texts: List[str]):
         self.emb = _l2norm_rows(embeddings)
         self.texts = doc_texts
@@ -56,22 +62,19 @@ class CorpusIndex:
         else:
             self.index = None
 
-    def search(self, query_vec: np.ndarray, k: int = 5):
-        q = query_vec.reshape(1, -1).astype(np.float32)
-        q = q / (np.linalg.norm(q, axis=1, keepdims=True) + 1e-12)
-        if self.index is not None:
-            q2 = q.copy()
-            faiss.normalize_L2(q2)
-            sims, idxs = self.index.search(q2, k)
-            return sims[0], idxs[0]
-        # NumPy fallback
-        sims_full = (q @ self.emb.T).ravel()
-        if k >= sims_full.size:
-            top_idx = np.argsort(-sims_full)
-        else:
-            part = np.argpartition(-sims_full, k)[:k]
-            top_idx = part[np.argsort(-sims_full[part])]
-        return sims_full[top_idx], top_idx
+    def search(self, query_embedding: np.ndarray, k: int = 5):
+        q2 = query_embedding.astype(np.float32).reshape(1, -1)
+        # L2-normalize the query to prepare for cosine similarity
+        faiss.normalize_L2(q2)
+
+        # Search the index
+        distances, idxs = self.index.search(q2, k)
+
+        # cosine similarity (dot product of normalized vectors) for the results.
+        retrieved_embs = self.embs[idxs[0]]
+        sims = (q2 @ retrieved_embs.T).ravel()
+
+        return sims, idxs[0]
 
     def save(self, index_dir: str):
         os.makedirs(index_dir, exist_ok=True)
