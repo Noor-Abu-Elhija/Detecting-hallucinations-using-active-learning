@@ -66,13 +66,11 @@ def evaluate_metrics(
         results["variance"] = overall
     if metric == "kmeans variance" or metric == "all":
         labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(embedder.encode(completions), k=k)
-    # --- ANN METRIC WITH YOUR NLI FIX ---
     if metric == "ann" or metric == 'all':
         if corpus_index is None:
             raise ValueError("CorpusIndex is required for ANN metric")
 
         comp_embs = embedder.encode(completions, convert_to_numpy=True).astype("float32")
-
         # Force NLI to CPU to prevent CUDA errors
         nli = NLI()
         nli.model.to('cpu')  # Ensure model is on CPU
@@ -86,27 +84,28 @@ def evaluate_metrics(
             max_sim = float(sims[0]) if len(sims) else 0.0
             nearest_txt = corpus_index.texts[int(idxs[0])] if len(idxs) else ""
 
-            # --- YOUR BRILLIANT NLI FIX ---
-            # Reconstruct a full, contextual hypothesis from the question and the short answer
-            reconstructed_hypothesis = f"The answer to '{original_question_text}' is '{completions[i]}'."
+            # Step 1: Explicitly check if the threshold was passed
+            passed_threshold = max_sim >= ann_threshold
 
+            # Step 2: Run NLI (we still need this for the final decision)
+            reconstructed_hypothesis = f"The answer to '{original_question_text}' is '{completions[i]}'."
             label_nli, conf_nli, _ = nli.predict(premise=nearest_txt, hypothesis=reconstructed_hypothesis)
 
-            supported = max_sim >= ann_threshold and label_nli == "entailment"
+            # Step 3: Final decision depends on BOTH checks
+            supported = passed_threshold and label_nli == "entailment"
             supported_flags.append(supported)
 
             ann_details.append({
                 "completion": completions[i],
                 "is_supported": supported,
                 "max_similarity": max_sim,
+                "passed_threshold": passed_threshold,  # <-- YOUR NEW EXPLICIT FIELD!
                 "nearest_sentence": nearest_txt,
                 "nli_label": label_nli
             })
 
         results["ann_details"] = ann_details
         results["supported_ratio"] = float(sum(supported_flags)) / len(supported_flags) if supported_flags else 0.0
-
-    return results
 
 def main():
     args = get_args()
