@@ -66,6 +66,7 @@ def evaluate_metrics(
         results["variance"] = overall
     if metric == "kmeans variance" or metric == "all":
         labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(embedder.encode(completions), k=k)
+        results["variance"] = overall
     if metric == "ann" or metric == 'all':
         if corpus_index is None:
             raise ValueError("CorpusIndex is required for ANN metric")
