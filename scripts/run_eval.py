@@ -109,10 +109,38 @@ def evaluate_metrics(
 
     return results
 
+
+def load_questions(path: str) -> List[Dict[str, Any]]:
+    """
+    Loads questions from a JSONL file.
+    Each line in the file is expected to be a JSON object.
+    """
+    if not path:
+        raise ValueError("A dataset file path must be provided via the --dataset argument.")
+
+    # --- ADDED A CHECK TO MAKE SURE THE FILE EXISTS ---
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Error: The dataset file was not found at the path: {path}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
 def main():
     args = get_args()
     all_qa_pairs = load_squad_qa("train")
-    qa_pairs = random.sample(all_qa_pairs, args.num_of_question)
+    #qa_pairs = random.sample(all_qa_pairs, args.num_of_question)
+    #questions = [item["question"] for item in qa_pairs]
+
+    qa_pairs = load_questions(args.dataset)
+    if not qa_pairs:
+        print("Error: Dataset file is empty or could not be loaded.")
+        return
+
+    # If the user specified a number of questions, take only the first N
+    if args.num_of_question > 0 and args.num_of_question < len(qa_pairs):
+        qa_pairs = qa_pairs[:args.num_of_question]  # Take the first N questions
+
     questions = [item["question"] for item in qa_pairs]
 
     # --- SETUP: Load models ONCE outside the loop for efficiency ---
@@ -125,16 +153,17 @@ def main():
 
     # Load the SQuAD index (only if we're running the 'ann' metric)
     corpus_index = None
-    if args.metric == 'ann':
+    if args.metric in {'ann', 'all'}:
         if not args.index_dir:
-            raise ValueError("You must provide --index_dir when using the 'ann' metric.")
+            raise ValueError("You must provide --index_dir when using the 'ann' or 'all'.")
         print(f"Loading sentence-chunk index from {args.index_dir}...")
         corpus_index = CorpusIndex.load(args.index_dir)
 
     # --- PROCESSING LOOP ---
     all_results = []
+
     for i, question_text in enumerate(questions):
-        print(f"\nProcessing question {i + 1}/{args.num_of_question}: '{question_text}'")
+        print(f"\nProcessing question {i + 1}/{len(questions)}: '{question_text}'")
 
         # 1. Generate new completions for each question using the formatted prompt
         completions, sequence_probs = run_generation(
@@ -158,7 +187,7 @@ def main():
             k=args.k,
             # We pass the original question down to use in our NLI fix
             original_question_text=question_text,
-            correct_answer=qa_pairs[i]["answers"]
+#            correct_answer=qa_pairs[i]["answers"]
 
         )
         all_results.append(results)
