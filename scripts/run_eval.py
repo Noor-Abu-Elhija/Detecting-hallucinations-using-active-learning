@@ -132,16 +132,9 @@ def main():
     qa_pairs = all_qa_pairs[:args.num_of_question]
     questions = [item["question"] for item in qa_pairs]
 
-    #qa_pairs = load_questions(args.dataset)
     if not qa_pairs:
         print("Error: Dataset file is empty or could not be loaded.")
         return
-
-    # # If the user specified a number of questions, take only the first N
-    # if args.num_of_question > 0 and args.num_of_question < len(qa_pairs):
-    #     qa_pairs = qa_pairs[:args.num_of_question]  # Take the first N questions
-
-    # questions = [item["question"] for item in qa_pairs]
 
     # --- SETUP: Load models ONCE outside the loop for efficiency ---
     print("Loading models (this may take a moment)...")
