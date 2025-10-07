@@ -3,58 +3,58 @@ import json
 import argparse
 from sklearn.metrics import classification_report
 
-
 def main(results_path, questions_path, ratio_threshold):
     # Load the detailed results from your experiment
     with open(results_path, 'r', encoding='utf-8') as f:
         results_data = json.load(f)
 
-    # Load the original questions to get the ground-truth labels
+    # --- THIS IS THE NEW, SMARTER LOGIC ---
+    # Load the original questions file and turn it into a lookup dictionary (an "answer key")
+    # The key will be the question string, and the value will be the label (0 or 1).
+    print(f"Building label lookup from: {questions_path}")
+    label_lookup = {}
     with open(questions_path, 'r', encoding='utf-8') as f:
-        # Create a dictionary mapping: question_string -> label
-        questions_data = {item['question']: item['label'] for item in [json.loads(line) for line in f]}
+        for line in f:
+            item = json.loads(line)
+            label_lookup[item['question']] = item['label']
+    print(f"Found {len(label_lookup)} ground-truth labels.")
+    
+    y_true = []  # The ground-truth labels
+    y_pred = []  # Your system's predictions
+    found_matches = 0
 
-    y_true = []  # The ground-truth labels (0 or 1)
-    y_pred = []  # Your system's predictions (0 or 1)
-
+    # Loop through the results from your (potentially shuffled) experiment
     for result in results_data:
         question = result['question']
-        true_label = questions_data.get(question)
-
-        # Only process this result if we have a ground-truth label for it
-        if true_label is not None:
+        
+        # Check if this question exists in our answer key
+        if question in label_lookup:
+            found_matches += 1
+            true_label = label_lookup[question]
+            
             supported_ratio = result.get('supported_ratio', 0.0)
             prediction = 1 if supported_ratio >= ratio_threshold else 0
-
+            
             y_true.append(true_label)
             y_pred.append(prediction)
 
-    # --- THIS IS THE NEW, ROBUST FIX ---
-    # Check if we actually found any matching labels before creating a report.
     if not y_true:
         print("\n--- ERROR ---")
-        print("Could not generate a report because no matching ground-truth labels were found.")
-        print("Please check the following:")
-        print(
-            f"1. Does the results file '{results_path}' contain the same questions as the labels file '{questions_path}'?")
-        print("2. Are the question strings an exact match in both files?")
+        print("Could not generate a report because NO matching questions were found between the results and the labels file.")
         print("-----------------\n")
-        return  # Exit the script gracefully
+        return
 
     print(f"\n--- Classification Report ---")
-    print(f"Results file: {results_path}")
-    print(f"Decision rule: Predicted 'supported' if supported_ratio >= {ratio_threshold}")
-    print(f"Found {len(y_true)} matching entries to evaluate.")
+    print(f"Found {found_matches} matching entries to evaluate out of {len(results_data)} results.")
     print("-" * 30)
-
+    
     report = classification_report(
-        y_true,
-        y_pred,
+        y_true, 
+        y_pred, 
         target_names=['false/hallucination (0)', 'true/supported (1)'],
         zero_division=0
     )
     print(report)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calculate final metrics from a results JSON file.")
@@ -63,5 +63,5 @@ if __name__ == "__main__":
     parser.add_argument('--ratio_threshold', type=float, default=0.5,
                         help="Threshold for 'supported_ratio' to be considered a 'supported' prediction.")
     args = parser.parse_args()
-
+    
     main(args.results_path, args.questions_path, args.ratio_threshold)
