@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-# This is our Oracle 'O' - the human labeler (you!)
+# This is our Oracle 'O' - the human labeler
 def get_human_label(question, completion, nearest_sentence):
     print("\n" + "="*30)
     print("  ORACLE: Please label the following sample:")
@@ -101,7 +101,7 @@ def main():
     Uq_keys = [unlabeled_keys[i] for i in most_uncertain_indices]
     print(f"Selected {len(Uq_keys)} samples for you to label.\n")
 
-    # --- STEP 4: Lq <- O.label(Uq) - Get labels from the Oracle (YOU) ---
+    # --- STEP 4: Lq <- O.label(Uq) - Get labels from the Oracle ---
     Lq = {} # This will be our new set of labels
     for key in Uq_keys:
         question, completion = key
