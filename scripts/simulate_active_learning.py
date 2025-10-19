@@ -12,7 +12,7 @@ def main():
     parser.add_argument("--metric", type=str, default="variance", choices=["variance", "semantic_entropy"], help="Which uncertainty metric to use for sorting.")
     args = parser.parse_args()
 
-    # --- Part 1: Load Your Human Labels into an "Oracle" ---
+    # --- Part 1: Load Human Labels into an "Oracle" ---
     print(f"--- Loading Human-Labeled Data from '{args.human_labels}' ---")
     oracle = {}
     try:
