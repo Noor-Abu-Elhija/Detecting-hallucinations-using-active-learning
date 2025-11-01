@@ -1,0 +1,77 @@
+# src/new_ann_verifier.py
+from __future__ import annotations
+import numpy as np
+
+try:
+    import faiss  # pip install faiss-cpu
+    _HAS_FAISS = True
+except Exception:
+    faiss = None
+    _HAS_FAISS = False
+
+
+def _l2_normalize(x: np.ndarray) -> np.ndarray:
+    x = x.astype(np.float32, copy=False)
+    if x.ndim == 1:
+        n = np.linalg.norm(x) + 1e-12
+        return x / n
+    n = np.linalg.norm(x, axis=1, keepdims=True) + 1e-12
+    return x / n
+
+
+class ANNVerifier:
+    """
+    Cosine-similarity ANN (FAISS if available, else NumPy).
+    """
+    def __init__(self, embeddings: np.ndarray):
+        if embeddings is None or embeddings.size == 0:
+            self._emb = np.zeros((0, 0), dtype=np.float32)
+            self.dim = 0
+            self.index = None
+            return
+
+        if embeddings.dtype != np.float32:
+            embeddings = embeddings.astype(np.float32)
+        self._emb = _l2_normalize(embeddings)
+        self.dim = self._emb.shape[1]
+
+        if _HAS_FAISS and self.dim > 0:
+            self.index = faiss.IndexFlatIP(self.dim)
+            emb_norm = self._emb.copy()
+            faiss.normalize_L2(emb_norm)
+            self.index.add(emb_norm)
+        else:
+            self.index = None
+
+    def verify(self, query_embedding: np.ndarray, k: int = 5, threshold: float = 0.80):
+        """
+        Returns:
+          (is_supported: bool, max_cosine_sim: float, idxs: np.ndarray[int], sims: np.ndarray[float])
+        """
+        if self._emb.size == 0:
+            return False, 0.0, np.array([], dtype=int), np.array([], dtype=np.float32)
+
+        q = query_embedding.astype(np.float32).reshape(1, -1)
+        q = _l2_normalize(q)
+
+        k = int(max(1, min(k, self._emb.shape[0])))
+
+        if self.index is not None:  # FAISS path
+            q_f = q.copy()
+            faiss.normalize_L2(q_f)
+            sims, idxs = self.index.search(q_f, k)
+            sims = sims[0]
+            idxs = idxs[0]
+        else:  # NumPy fallback
+            sims_full = (q @ self._emb.T).ravel()
+            if k >= sims_full.size:
+                topk_idx = np.argsort(-sims_full)
+            else:
+                part = np.argpartition(-sims_full, k)[:k]
+                topk_idx = part[np.argsort(-sims_full[part])]
+            sims = sims_full[topk_idx]
+            idxs = topk_idx
+
+        max_sim = float(sims[0]) if sims.size else 0.0
+        is_supported = (max_sim >= threshold)
+        return is_supported, max_sim, idxs, sims
