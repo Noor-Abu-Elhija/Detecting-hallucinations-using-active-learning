@@ -93,7 +93,7 @@ def evaluate_metrics(
 
             label_nli, conf_nli, _ = nli.predict(premise=nearest_txt, hypothesis=reconstructed_hypothesis)
 
-            supported = max_sim >= ann_threshold and (label_nli == "entailment" or "neutral")
+            supported = max_sim >= ann_threshold and (label_nli == "entailment" or label_nli == "neutral")
             supported_flags.append(supported)
 
             ann_details.append({
