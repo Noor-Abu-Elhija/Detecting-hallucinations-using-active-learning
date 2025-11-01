@@ -63,10 +63,10 @@ def evaluate_metrics(
         results["variance"] = overall
     if metric == "weighted variance" or metric == "all":
         centroid, per_var, overall =compute_embedding_variance_weighted(embedder.encode(completions),np.array(sequence_probs))
-        results["variance"] = overall
+        results["weighted_variance"] = overall
     if metric == "kmeans variance" or metric == "all":
         labels, cents, per_var, overall, cluster_vars = compute_kmeans_variance(embedder.encode(completions), k=k)
-        results["variance"] = overall
+        results["kmeans_variance"] = overall
         results["cluster_variances"] = cluster_vars
     if metric == "ann" or metric == 'all':
         if corpus_index is None:
@@ -129,12 +129,8 @@ def load_questions(path: str) -> List[Dict[str, Any]]:
 def main():
     args = get_args()
     all_qa_pairs = load_squad_qa("train")
-    qa_pairs = all_qa_pairs[:args.num_of_question]
+    qa_pairs = random.sample(all_qa_pairs, args.num_of_question)
     questions = [item["question"] for item in qa_pairs]
-
-    if not qa_pairs:
-        print("Error: Dataset file is empty or could not be loaded.")
-        return
 
     # --- SETUP: Load models ONCE outside the loop for efficiency ---
     print("Loading models (this may take a moment)...")
@@ -154,9 +150,8 @@ def main():
 
     # --- PROCESSING LOOP ---
     all_results = []
-
     for i, question_text in enumerate(questions):
-        print(f"\nProcessing question {i + 1}/{len(questions)}: '{question_text}'")
+        print(f"\nProcessing question {i + 1}/{args.num_of_question}: '{question_text}'")
 
         # 1. Generate new completions for each question using the formatted prompt
         completions, sequence_probs = run_generation(
@@ -180,7 +175,7 @@ def main():
             k=args.k,
             # We pass the original question down to use in our NLI fix
             original_question_text=question_text,
-#            correct_answer=qa_pairs[i]["answers"]
+            correct_answer=qa_pairs[i]["answers"]
 
         )
         all_results.append(results)
