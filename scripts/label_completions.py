@@ -1,49 +1,43 @@
 # scripts/label_completions.py
+# This script allows a human annotator to manually label generated answers as factually supported or not.
+# It loads model outputs, displays them with context, and saves user-provided labels into a JSONL file.
+
 import json
 import argparse
 import os
 
 def main():
+    """Run an interactive labeling session for human annotation of model completions."""
     parser = argparse.ArgumentParser(description="Manually label generated completions.")
-    parser.add_argument("--input_file", type=str, required=True, help="Path to the JSON file from your teammates' run.")
-    parser.add_argument("--output_file", type=str, required=True, help="Path to save your new human-labeled JSONL file.")
+    parser.add_argument("--input_file", type=str, required=True, help="Path to the model output JSON file.")
+    parser.add_argument("--output_file", type=str, required=True, help="Path to save the labeled JSONL file.")
     args = parser.parse_args()
 
-    # --- Load the dataset ---
+    # Load input data
     try:
         with open(args.input_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
     except FileNotFoundError:
-        print(f"FATAL ERROR: The input file was not found at '{args.input_file}'")
-        print("Please make sure you are in the main project directory when running this script.")
+        print(f"ERROR: Input file not found at '{args.input_file}'")
         return
     except json.JSONDecodeError:
-        print(f"FATAL ERROR: The input file '{args.input_file}' is not a valid JSON file.")
+        print(f"ERROR: '{args.input_file}' is not a valid JSON file.")
         return
 
     print("--- Starting Human Labeling Session ---")
-    print("For each generated answer, you will see the context it was compared against.")
-    print("Your task is to determine if the answer is factually supported by that context.")
+    print("Review each generated answer and decide if it is factually supported by the context.")
     print("Enter 'y' for YES, 'n' for NO, or 's' to SKIP.\n")
 
-    # --- Create the output directory if it doesn't exist ---
+    # Create output directory if missing
     output_dir = os.path.dirname(args.output_file)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    # --- Open the output file to write labels ---
+    # Open output file for labeled results
     with open(args.output_file, 'w', encoding='utf-8') as out_f:
         for i, item in enumerate(data):
             question = item.get('question', 'N/A')
-            # Handle potential differences in the input JSON structure
-            if 'ann_details' in item:
-                completions_details = item['ann_details']
-            elif 'completions' in item and isinstance(item['completions'], list):
-                 completions_details = item['completions'] # Adapt if the structure is different
-            else:
-                completions_details = []
-
-
+            completions_details = item.get('ann_details') or item.get('completions', [])
             if not completions_details:
                 continue
 
@@ -52,21 +46,19 @@ def main():
 
             for j, detail in enumerate(completions_details):
                 completion = detail.get('completion', 'N/A')
-                nearest_sentence = detail.get('nearest_sentence', detail.get('nearest_text', 'N/A')) # Check for both possible keys
-                machine_label = detail.get('is_supported', detail.get('supported', False)) # Check for both possible keys
+                nearest_sentence = detail.get('nearest_sentence', detail.get('nearest_text', 'N/A'))
+                machine_label = detail.get('is_supported', detail.get('supported', False))
 
                 print(f"\n  [Completion {j+1}/{len(completions_details)}]")
                 print(f"  Generated Answer: '{completion}'")
-                print(f"  Nearest Sentence (from knowledge base): '{nearest_sentence}'")
-                print(f"  Machine's Guess: {'SUPPORTED' if machine_label else 'NOT SUPPORTED'}")
+                print(f"  Nearest Sentence: '{nearest_sentence}'")
+                print(f"  Machine Guess: {'SUPPORTED' if machine_label else 'NOT SUPPORTED'}")
 
-                # Loop until a valid input is received
                 while True:
-                    user_input = input("  Is the answer factually supported by the nearest sentence? (y/n/s): ").lower()
+                    user_input = input("  Is the answer factually supported? (y/n/s): ").lower()
                     if user_input in ['y', 'n', 's']:
                         break
-                    else:
-                        print("  Invalid input. Please enter 'y', 'n', or 's'.")
+                    print("  Invalid input. Please enter 'y', 'n', or 's'.")
 
                 if user_input == 's':
                     print("  Skipped.")
@@ -74,7 +66,6 @@ def main():
 
                 human_label = (user_input == 'y')
 
-                # Prepare the final labeled data point
                 labeled_point = {
                     'question': question,
                     'completion': completion,
@@ -84,12 +75,10 @@ def main():
                     'variance_for_question': item.get('variance'),
                 }
 
-                # Write this labeled point as a new line in output file
                 out_f.write(json.dumps(labeled_point) + '\n')
 
     print(f"\n--- Labeling session complete! ---")
-    print(f"Your labels have been saved to '{args.output_file}'")
-
+    print(f"Your annotations have been saved to '{args.output_file}'")
 
 if __name__ == "__main__":
     main()
