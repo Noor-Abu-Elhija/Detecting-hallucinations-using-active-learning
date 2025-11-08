@@ -58,11 +58,11 @@ You can reproduce the full pipeline using the following commands step-by-step:
 # Clone the repository
 git clone https://github.com/Noor-Abu-Elhija/Detecting-hallucinations-using-active-learning.git
 cd Detecting-hallucinations-using-active-learning
-
+```bash
 # Create and activate the Conda environment
 conda env create -f environment.yml
 conda activate project
-
+```bash
 # Run uncertainty metric evaluation (Entropy, Semantic Entropy, etc.)
 python scripts/run_eval.py \
   --index_dir indexes/squad_v2 \
@@ -76,7 +76,7 @@ python scripts/run_eval.py \
   --k 3 \
   --metric all 
 
-
+```bash
 # Run the Active Learning loop
 python src/active_selector.py \
   --dataset datasets/squad_train.json \
@@ -86,7 +86,7 @@ python src/active_selector.py \
   --batch_size 20 \
   --output out/active_learning_results.json
 
-
+```bash
 #  View outputs
 # Results are saved under:
 # out/
