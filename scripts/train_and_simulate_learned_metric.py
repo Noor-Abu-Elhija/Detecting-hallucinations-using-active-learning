@@ -1,4 +1,8 @@
 # scripts/train_and_simulate_learned_metric_v3_optimized.py
+# This script trains a Logistic Regression model (a “judge”) to predict hallucination likelihood
+# using features like variance, entropy, similarity, and NLI labels — then simulates active learning
+# to compare learned selection vs random sampling in finding hallucinations efficiently.
+
 import json
 import argparse
 import random
@@ -7,118 +11,104 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 def main():
+    """Train a learned uncertainty metric and simulate an Active Learning round."""
     parser = argparse.ArgumentParser(description="Train a 'judge' model and simulate active learning (Optimized Version).")
-    parser.add_argument("--raw_results", type=str, required=True, help="Path to the raw JSON file with all features.")
+    parser.add_argument("--raw_results", type=str, required=True, help="Path to the JSON file with extracted features.")
     parser.add_argument("--human_labels", type=str, required=True, help="Path to the human-labeled JSONL file.")
-    parser.add_argument("--top_k", type=int, default=5, help="The number of samples to select.")
+    parser.add_argument("--top_k", type=int, default=5, help="Number of samples to select per round.")
     args = parser.parse_args()
 
-    print("--- Loading all available data ---")
+    print("--- Loading data and human labels ---")
     oracle = {}
     all_points = []
 
+    # Load human labels (ground truth)
     try:
         with open(args.human_labels, 'r', encoding='utf-8') as f:
             for line in f:
                 record = json.loads(line)
-                key = (record['question'], record['completion'])
-                oracle[key] = record['human_label_is_supported']
+                oracle[(record['question'], record['completion'])] = record['human_label_is_supported']
     except FileNotFoundError:
-        print(f"FATAL: Human labels file not found at '{args.human_labels}'")
+        print(f"ERROR: Human labels file not found at '{args.human_labels}'")
         return
 
+    # Load raw experimental data
     try:
         with open(args.raw_results, 'r', encoding='utf-8') as f:
             raw_data = json.load(f)
     except FileNotFoundError:
-        print(f"FATAL: Raw results file not found at '{args.raw_results}'")
+        print(f"ERROR: Raw results file not found at '{args.raw_results}'")
         return
 
-    total_hallucinations_in_pool = sum(1 for supported in oracle.values() if not supported)
-    print(f"Loaded {len(oracle)} human-labeled answers. Found {total_hallucinations_in_pool} total hallucinations.\n")
+    total_hallucinations = sum(1 for supported in oracle.values() if not supported)
+    print(f"Loaded {len(oracle)} labels ({total_hallucinations} hallucinations detected).\n")
 
-    for question_data in raw_data:
-        for detail in question_data.get('ann_details', []):
-            nli_label = detail.get('nli_label', 'neutral')
+    # Extract features
+    for q in raw_data:
+        for d in q.get('ann_details', []):
+            nli_label = d.get('nli_label', 'neutral')
             features = [
-                question_data.get('variance', 0),
-                question_data.get('semantic_entropy', 0),
-                detail.get('max_similarity', 0),
+                q.get('variance', 0),
+                q.get('semantic_entropy', 0),
+                d.get('max_similarity', 0),
                 1 if nli_label == 'contradiction' else 0,
                 1 if nli_label == 'neutral' else 0
             ]
-            
-            point = {
-                "question": question_data['question'],
-                "completion": detail['completion'],
+            all_points.append({
+                "question": q['question'],
+                "completion": d['completion'],
                 "features": features
-            }
-            all_points.append(point)
+            })
 
-    training_points = [p for p in all_points if (p['question'], p['completion']) in oracle]
-    
-    print(f"--- Training a SMARTER 'Judge' model on {len(training_points)} labels ---")
-    X_train = np.array([d['features'] for d in training_points])
-    y_train = np.array([not oracle[(d['question'], d['completion'])] for d in training_points])
+    # Train model on labeled subset
+    labeled_data = [p for p in all_points if (p['question'], p['completion']) in oracle]
+    print(f"--- Training learned 'Judge' model on {len(labeled_data)} samples ---")
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
+    X_train = np.array([d['features'] for d in labeled_data])
+    y_train = np.array([not oracle[(d['question'], d['completion'])] for d in labeled_data])
 
-    judge_model = LogisticRegression(class_weight='balanced', random_state=42)
-    judge_model.fit(X_train_scaled, y_train)
-    print("Training complete.\n")
+    scaler = StandardScaler().fit(X_train)
+    model = LogisticRegression(class_weight='balanced', random_state=42).fit(scaler.transform(X_train), y_train)
+    print("Model training complete.\n")
 
-    # --- OPTIMIZATION: Prepare all data for batch prediction ---
-    all_features = np.array([item['features'] for item in all_points])
-    
-    # --- OPTIMIZATION: Scale and Predict ONCE on the entire batch ---
-    all_features_scaled = scaler.transform(all_features)
-    all_uncertainty_scores = judge_model.predict_proba(all_features_scaled)[:, 1]
-    
-    # --- OPTIMIZATION: Add the scores back to the data ---
-    for i, item in enumerate(all_points):
-        item['uncertainty'] = all_uncertainty_scores[i]
+    # Predict uncertainty on all samples
+    X_all = np.array([p['features'] for p in all_points])
+    all_probs = model.predict_proba(scaler.transform(X_all))[:, 1]
 
-    print(f"--- Simulating Active Learning with the 'Learned Metric' (selecting top {args.top_k}) ---")
+    for i, p in enumerate(all_points):
+        p['uncertainty'] = all_probs[i]
+
+    # Active learning simulation
+    print(f"--- Simulating Active Learning (top {args.top_k} by model uncertainty) ---")
     all_points.sort(key=lambda x: x['uncertainty'], reverse=True)
-    selected_by_learned = all_points[:args.top_k]
-    
-    learned_found_count = 0
-    for item in selected_by_learned:
-        key = (item['question'], item['completion'])
-        if key in oracle and not oracle.get(key, True):
-            learned_found_count += 1
-    
-    print(f"Learned Metric selection found {learned_found_count} hallucinations.")
+    top_uncertain = all_points[:args.top_k]
+    learned_found = sum(
+        not oracle.get((p['question'], p['completion']), True)
+        for p in top_uncertain
+    )
+    print(f"Learned Metric found {learned_found} hallucinations.")
 
+    # Random sampling simulation
     print(f"\n--- Simulating Random Sampling (selecting {args.top_k} at random) ---")
     random.seed(42)
-    selected_by_random = random.sample(all_points, args.top_k)
-    
-    random_found_count = 0
-    for item in selected_by_random:
-        key = (item['question'], item['completion'])
-        if key in oracle and not oracle.get(key, True):
-            random_found_count += 1
-            
-    print(f"Random Sampling selection found {random_found_count} hallucinations.")
+    random_found = sum(
+        not oracle.get((p['question'], p['completion']), True)
+        for p in random.sample(all_points, args.top_k)
+    )
+    print(f"Random Sampling found {random_found} hallucinations.\n")
 
-    print("\n" + "="*30)
+    # Summary
+    print("=" * 30)
     print("  FINAL ACTIVE LEARNING REPORT (V3 - Optimized)")
-    print("="*30)
-    print(f"METHOD 1: Active Learning (using a SMARTER learned metric)")
-    print(f"  - Selected top {args.top_k} samples.")
-    print(f"  - Found {learned_found_count} hallucinations.")
-    print("-" * 30)
-    print(f"METHOD 2: Random Sampling")
-    print(f"  - Selected {args.top_k} random samples.")
-    print(f"  - Found {random_found_count} hallucinations.")
-    print("="*30)
+    print("=" * 30)
+    print(f"Active Learning (Learned Metric): {learned_found}/{args.top_k}")
+    print(f"Random Sampling: {random_found}/{args.top_k}")
+    print("=" * 30)
 
-    if learned_found_count > random_found_count:
-        print("\nCONCLUSION: SUCCESS! The new model trained on your labels is MORE EFFICIENT than random sampling.")
+    if learned_found > random_found:
+        print("\n✅ CONCLUSION: The learned model is MORE EFFICIENT at discovering hallucinations!")
     else:
-        print("\nCONCLUSION: The new model still couldn't find a strong pattern. We may need more data or better features.")
+        print("\n⚠️ CONCLUSION: The learned model was NOT superior — more data or features may be needed.")
 
 if __name__ == "__main__":
     main()
