@@ -84,8 +84,8 @@ python -u scripts/run_eval.py \
 python run_active_learning_final.py --data-file all_test_results_1_temp.json --metric weighted_variance  
 ```
 # View outputs
-# Results are saved under:
-# out/
+ Results are saved under:
+out/
 
 
 
