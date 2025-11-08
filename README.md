@@ -81,7 +81,7 @@ python -u scripts/run_eval.py \
 
 #  Run the Active Learning loop (output data file and what metric to use)
 ```bash
-python3 run_active_learning_final.py --data-file all_test_results_1_temp.json --metric weighted_variance  
+python run_active_learning_final.py --data-file all_test_results_1_temp.json --metric weighted_variance  
 ```
 # View outputs
 # Results are saved under:
