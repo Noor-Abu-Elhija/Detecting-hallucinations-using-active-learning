@@ -65,7 +65,6 @@ cd Detecting-hallucinations-using-active-learning
 ```bash
 conda env create -f environment.yml
 conda activate project
-  --metric all
 ```
 # Run uncertainty metric evaluation (Entropy, Semantic Entropy, etc.)
 ```bash
