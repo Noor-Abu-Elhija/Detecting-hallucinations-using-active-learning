@@ -58,7 +58,7 @@ def run_simulation(data_filepath, metric_name):
         model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
         model.fit(X_train_scaled, y_train)
 
-        # --- THIS IS THE KEY CHANGE: SELECT 5 RANDOM SAMPLES ---
+        # --- SELECT 5 RANDOM SAMPLES ---
         query_size = min(QUERY_SIZE, len(unlabeled_pool))
         # Use the iteration number as a random_state to ensure the "random" choices are repeatable
         query_indices = unlabeled_pool.sample(n=query_size, random_state=iteration).index
