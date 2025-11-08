@@ -20,7 +20,7 @@ METRIC_TO_COLUMN_MAP = {
 
 def run_simulation(data_filepath, metric_name):
     """
-    Loads data, runs the active learning loop, and saves the FULL, updated dataset.
+    Loads data, runs the active learning loop, and saves the full, updated dataset.
     """
     print(f"Loading data from: {os.path.basename(data_filepath)}")
     df = pd.read_json(data_filepath)
@@ -35,7 +35,7 @@ def run_simulation(data_filepath, metric_name):
         df['feature'] = df[feature_column_name]
 
     # --- Separate data without deleting anything ---
-    # This correctly handles boolean True/False and leaves other values (like "null") as NaN
+    # Handles boolean True/False and leaves other values (like "null") as NaN
     label_map = {True: 1, False: 0, 'true': 1, 'false': 0}
     df['is_hallucination'] = df['is_hallucination'].map(label_map)
     
@@ -87,18 +87,18 @@ def run_simulation(data_filepath, metric_name):
         
         print(f"Iter {iteration:3d}: Labeled Size = {len(labeled_pool):4d}, Unlabeled Remaining = {len(unlabeled_pool):4d}")
 
-    # --- THE CRITICAL FIX: UPDATE THE ORIGINAL DATAFRAME ---
+    # --- UPDATE THE ORIGINAL DATAFRAME ---
     print("\nLoop complete. Updating the original dataframe with final labels...")
     
     # Create a map from the question to its final predicted label
     final_label_map = labeled_pool.set_index('question')['is_hallucination']
     
-    # Use the map to fill in the 'is_hallucination' column in the original full dataframe
+    # Uses the map to fill in the 'is_hallucination' column in the original full dataframe
     df['is_hallucination'] = df['question'].map(final_label_map)
     df.dropna(subset=['is_hallucination'], inplace=True) # Remove any rows that failed to map
     df['is_hallucination'] = df['is_hallucination'].astype(int)
 
-    # Now, save the UPDATED ORIGINAL dataframe, which has all columns
+    # Saving the UPDATED ORIGINAL dataframe, which has all columns
     output_basename = os.path.basename(data_filepath).replace('.json', '')
     output_filename = f"{output_basename}_final_labels_by_{metric_name}.json"
     output_path = os.path.join(os.path.dirname(data_filepath), output_filename)
