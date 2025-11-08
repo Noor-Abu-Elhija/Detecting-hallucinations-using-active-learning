@@ -1,4 +1,7 @@
 # src/ann_verifier.py
+# This module implements a cosine-similarity-based Approximate Nearest Neighbor (ANN) verifier.
+# It uses FAISS for efficient search if available, otherwise falls back to a NumPy implementation.
+
 from __future__ import annotations
 import numpy as np
 
@@ -11,7 +14,7 @@ except Exception:
 
 
 def _l2_normalize(x: np.ndarray) -> np.ndarray:
-    """Row-wise L2-normalize (works for both 1D and 2D)."""
+    """Row-wise L2 normalization for 1D or 2D NumPy arrays."""
     x = x.astype(np.float32, copy=False)
     if x.ndim == 1:
         n = np.linalg.norm(x) + 1e-12
@@ -22,60 +25,58 @@ def _l2_normalize(x: np.ndarray) -> np.ndarray:
 
 class ANNVerifier:
     """
-    Cosine-similarity ANN verifier.
+    Cosine-similarity ANN verifier for factual support detection.
 
-    - If FAISS is available: uses IndexFlatIP (inner product). With normalized vectors,
-      inner product == cosine similarity.
-    - If FAISS is NOT available: falls back to NumPy cosine search.
+    - Uses FAISS (IndexFlatIP) when available for fast inner-product search.
+    - Falls back to NumPy cosine similarity if FAISS is unavailable.
     """
 
     def __init__(self, embeddings: np.ndarray):
         """
-        embeddings: (N, D) float32. These are the trusted corpus (e.g., Wikipedia chunks).
+        Initialize the verifier with a trusted corpus of embeddings.
+        Args:
+            embeddings: (N, D) array of float32 embeddings representing reference texts.
         """
         if embeddings.dtype != np.float32:
             embeddings = embeddings.astype(np.float32)
 
-        self._emb = _l2_normalize(embeddings)  # keep normalized copy for fallback
+        self._emb = _l2_normalize(embeddings)
         self.dim = self._emb.shape[1]
 
         if _HAS_FAISS:
             self.index = faiss.IndexFlatIP(self.dim)
-            # Normalize *again* for FAISS (no-op if already normalized but safe)
             emb_norm = self._emb.copy()
             faiss.normalize_L2(emb_norm)
             self.index.add(emb_norm)
         else:
-            self.index = None  # NumPy fallback
+            self.index = None  # fallback mode
 
     def verify(self, query_embedding: np.ndarray, k: int = 5, threshold: float = 0.80):
         """
+        Compare a query embedding against the corpus.
         Returns:
-          (is_supported: bool, max_cosine_sim: float, idxs: np.ndarray[int])
-
-        threshold is cosine similarity in [0,1]. Typical values: 0.75–0.90.
+            (is_supported, max_cosine_sim, idxs)
+        where:
+            - is_supported: True if top cosine similarity >= threshold
+            - max_cosine_sim: top similarity score
+            - idxs: indices of the top-k similar entries
         """
-        q = query_embedding.astype(np.float32).reshape(1, -1)
-        q = _l2_normalize(q)
+        q = _l2_normalize(query_embedding.astype(np.float32).reshape(1, -1))
 
-        if self.index is not None:  # FAISS path
+        if self.index is not None:  # FAISS-based search
             q_f = q.copy()
             faiss.normalize_L2(q_f)
             sims, idxs = self.index.search(q_f, k)
-            sims = sims[0]        # shape (k,)
-            idxs = idxs[0]        # shape (k,)
+            sims, idxs = sims[0], idxs[0]
         else:  # NumPy fallback
-            # cosine = dot(q, emb) since both are L2-normalized
-            sims_full = (q @ self._emb.T).ravel()  # shape (N,)
-            # top-k via argpartition
+            sims_full = (q @ self._emb.T).ravel()
             if k >= sims_full.size:
                 topk_idx = np.argsort(-sims_full)
             else:
                 part = np.argpartition(-sims_full, k)[:k]
                 topk_idx = part[np.argsort(-sims_full[part])]
-            sims = sims_full[topk_idx]
-            idxs = topk_idx
+            sims, idxs = sims_full[topk_idx], topk_idx
 
         max_sim = float(sims[0]) if sims.size else 0.0
-        is_supported = (max_sim >= threshold)
+        is_supported = max_sim >= threshold
         return is_supported, max_sim, idxs
