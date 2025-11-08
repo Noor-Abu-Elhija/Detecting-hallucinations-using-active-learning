@@ -6,7 +6,7 @@ It integrates **Semantic Entropy**, **Entropy**, **Variance-based metrics**, and
 
 ---
 
-## 🚀Overview
+## Overview
 
 Large Language Models often produce **confident but incorrect statements** (“hallucinations”).  
 This project aims to detect such outputs efficiently by leveraging multiple uncertainty signals and refining a hallucination classifier through **active learning loops**.
