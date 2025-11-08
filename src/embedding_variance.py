@@ -1,4 +1,7 @@
 # src/embedding_variance.py
+# This module provides functions to compute embedding variance metrics for uncertainty estimation.
+# It includes unweighted, weighted, and k-means–based variance calculations for LLM-generated embeddings.
+
 import numpy as np
 
 try:
@@ -10,31 +13,37 @@ except Exception:
 
 def compute_embedding_variance(embeddings: np.ndarray):
     """
-    Unweighted global variance:
-      centroid = mean(embeddings)
-      per_answer_var[i] = ||emb[i] - centroid||^2
-      overall_var = mean(per_answer_var)
+    Compute unweighted global variance across embeddings.
+    Steps:
+      1. Compute centroid = mean(embeddings)
+      2. Compute per-sample variance = ||emb[i] - centroid||²
+      3. Average over all samples
+    Returns:
+        centroid, per_answer_var, overall_var
     """
     emb = np.asarray(embeddings, dtype=np.float32)
     centroid = emb.mean(axis=0)
     diffs = emb - centroid
-    per_answer_var = np.sum(diffs * diffs, axis=1)  # squared L2 per sample
+    per_answer_var = np.sum(diffs * diffs, axis=1)
     overall_var = float(np.mean(per_answer_var))
     return centroid.astype(np.float32), per_answer_var.astype(np.float32), overall_var
 
 
 def compute_embedding_variance_weighted(embeddings: np.ndarray, weights: np.ndarray):
     """
-    Weighted global variance (uses sequence probabilities as weights):
-      - weights are clipped to >=0 and normalized to sum to 1
-      - centroid = sum_i w_i * emb[i]
-      - per_answer_var[i] = ||emb[i] - centroid||^2
-      - overall_var = sum_i w_i * per_answer_var[i]
+    Compute weighted variance using sample weights (e.g., sequence probabilities).
+    Steps:
+      1. Normalize non-negative weights to sum to 1.
+      2. Weighted centroid = Σ w_i * emb[i]
+      3. Weighted variance = Σ w_i * ||emb[i] - centroid||²
+    Returns:
+        centroid, per_answer_var, overall_var
     """
     emb = np.asarray(embeddings, dtype=np.float32)
     w = np.asarray(weights, dtype=np.float64)
     w = np.clip(w, 0.0, np.inf)
     Z = w.sum()
+
     if Z <= 0 or not np.isfinite(Z):
         w = np.full_like(w, 1.0 / len(w))
     else:
@@ -49,13 +58,16 @@ def compute_embedding_variance_weighted(embeddings: np.ndarray, weights: np.ndar
 
 def compute_kmeans_variance(embeddings: np.ndarray, k: int):
     """
-    Optional KMeans view:
-      - fit KMeans(k)
-      - report per-answer squared distance to its cluster centroid
-      - report per-cluster and overall mean within-cluster variance
+    Cluster embeddings via KMeans and compute within-cluster variances.
+    Steps:
+      1. Fit KMeans(k) to embeddings.
+      2. Compute per-sample squared distance to its centroid.
+      3. Report per-cluster and overall variance.
+    Returns:
+        labels, centroids, per_answer_var, overall_var, cluster_vars
     """
     if not _HAVE_SKLEARN:
-        raise RuntimeError("scikit-learn not installed. `pip install scikit-learn` or run with --k 0")
+        raise RuntimeError("scikit-learn not installed. Please install it or run without --k.")
 
     emb = np.asarray(embeddings, dtype=np.float32)
     km = KMeans(n_clusters=k, n_init="auto", random_state=42)
