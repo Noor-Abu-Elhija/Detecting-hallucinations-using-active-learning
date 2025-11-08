@@ -52,16 +52,50 @@ for i in 1...N:
 
 ```
 
-## ▶️ How to Run
+##  How to Run
 
-You can reproduce the full pipeline using the following commands step-by-step.
+You can reproduce the full pipeline using the following commands step-by-step:
 
----
-
-### Step 1 — Clone the Repository
 ```bash
+# Clone the repository
 git clone https://github.com/Noor-Abu-Elhija/Detecting-hallucinations-using-active-learning.git
 cd Detecting-hallucinations-using-active-learning
+```
+#  Create and activate the Conda environment
+```bash
+conda env create -f environment.yml
+conda activate project
+  --metric all
+```
+# Run uncertainty metric evaluation (Entropy, Semantic Entropy, etc.)
+
+python -u scripts/run_eval.py \
+  --index_dir indexes/squad_v2 \
+  --save_json out/all_test_results_1_temp.json \
+  --embed_model all-mpnet-base-v2 \
+  --num_generations 5 \
+  --num_of_question 800 \
+  --temperature 1 \
+  --max_new_tokens 50 \
+  --ann_threshold 0.55 \
+  --k 3 \
+  --metric all
+```
+
+#  Run the Active Learning loop
+```bash
+python src/active_selector.py \
+  --dataset datasets/squad_train.json \
+  --initial_labels datasets/labeled_seed.json \
+  --metric SemanticEntropy \
+  --iterations 5 \
+  --batch_size 20 \
+  --output out/active_learning_results.json
+  --metric all
+```
+# View outputs
+# Results are saved under:
+# out/
 
 
 
