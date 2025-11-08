@@ -50,24 +50,7 @@ for i in 1...N:
     Add labeled samples to L
     Retrain classifier Cᵢ
 
-Require: 
-    Unlabeled pool U of questions,
-    small labeled seed set L,
-    number of iterations N,
-    batch size k,
-    acquisition metric M
-Ensure:
-    Trained classifier C that predicts hallucination likelihood
-
-Initialize: Train a classifier C₀ on L
-for i in 1...N:
-    Compute M for all u ∈ U
-    Select top-k samples with highest M(u)
-    Query oracle for true labels
-    Add labeled samples to L
-    Retrain classifier Cᵢ
-
----
+```
 
 ## ▶️ How to Run
 
