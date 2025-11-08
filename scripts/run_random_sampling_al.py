@@ -62,7 +62,6 @@ def run_simulation(data_filepath, metric_name):
         query_size = min(QUERY_SIZE, len(unlabeled_pool))
         # Use the iteration number as a random_state to ensure the "random" choices are repeatable
         query_indices = unlabeled_pool.sample(n=query_size, random_state=iteration).index
-        # --- END OF KEY CHANGE ---
 
         X_to_predict = unlabeled_pool.loc[query_indices][['feature']].values
         X_to_predict_scaled = scaler.transform(X_to_predict)
