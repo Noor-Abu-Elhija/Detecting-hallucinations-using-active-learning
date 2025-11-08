@@ -11,8 +11,6 @@ It integrates **Semantic Entropy**, **Entropy**, **Variance-based metrics**, and
 Large Language Models often produce **confident but incorrect statements** (“hallucinations”).  
 This project aims to detect such outputs efficiently by leveraging multiple uncertainty signals and refining a hallucination classifier through **active learning loops**.
 
-We extend the work of **Farquhar et al. (2024, *Nature*)**, introducing a **multi-metric selection strategy** that guides annotation toward the most informative examples.
-
 ---
 
 ## Methodology
