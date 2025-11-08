@@ -1,4 +1,8 @@
 # scripts/generate_embedding_variance.py
+# This script generates multiple completions for a question using Falcon,
+# computes embedding-based variance metrics (including weighted and KMeans),
+# and saves the results as a structured JSON report.
+
 import os, sys, json, datetime
 import numpy as np
 
@@ -15,6 +19,7 @@ from src.embedding_variance import (
 )
 
 def save_output(path, payload):
+    """Save computed results to a JSON file."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -25,7 +30,7 @@ def main():
     question = args.question or "What is the capital of France?"
     prompt = format_prompt(question)
 
-    # 1) Generate answers (Falcon via your existing helper)
+    # Step 1: Generate model completions with Falcon
     tokenizer, model = load_falcon_model()
     completions, token_probs, sequence_probs = generate_with_probs(
         prompt=prompt,
@@ -35,25 +40,22 @@ def main():
         temperature=args.temperature,
     )
 
-    # 2) Embed answers (force CPU to avoid CUDA on Tesla M60)
+    # Step 2: Compute sentence embeddings on CPU
     embed_model = getattr(args, "embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
     st = SentenceTransformer(embed_model, device="cpu")
     emb = st.encode(completions, convert_to_numpy=True).astype("float32")
 
-
-    # 3) Global variance (weighted or unweighted)
+    # Step 3: Compute global embedding variance (weighted/unweighted)
     use_weighted = getattr(args, "weighted", False)
     if use_weighted:
-        # normalize sequence_probs so they form a probability vector
         weights = np.asarray(sequence_probs, dtype=np.float64)
-        weights = np.clip(weights, 1e-40, 1.0)   # avoid zeros
+        weights = np.clip(weights, 1e-40, 1.0)
         weights /= weights.sum()
         centroid, per_var, overall = compute_embedding_variance_weighted(emb, weights)
     else:
         centroid, per_var, overall = compute_embedding_variance(emb)
 
-
-    # 4) Optional KMeans variance
+    # Step 4: Optionally compute KMeans-based variance
     k = getattr(args, "k", 0)
     kmeans_result = None
     if k and k > 0:
@@ -65,13 +67,15 @@ def main():
                 "centroids": [c.tolist() for c in cents],
                 "per_answer_var": km_per_var.tolist(),
                 "overall_var": float(km_overall),
-                "cluster_variances": {str(ci): {"count": int(v["count"]), "variance": float(v["variance"])}
-                                      for ci, v in cluster_vars.items()},
+                "cluster_variances": {
+                    str(ci): {"count": int(v["count"]), "variance": float(v["variance"])}
+                    for ci, v in cluster_vars.items()
+                },
             }
         except Exception as e:
             print(f"[warn] KMeans skipped: {e}")
 
-    # 5) Report
+    # Step 5: Display results
     print("\n=== Embedding Variance Report ===")
     print(f"Question: {question}")
     print(f"Embedding model: {embed_model}  |  Weighted: {use_weighted}")
@@ -79,7 +83,7 @@ def main():
         print(f"[{i}] var_to_centroid={float(v):.6f} -> {c}")
     print(f"\nGlobal centroid variance (mean squared distance): {float(overall):.6f}")
 
-    # 6) Save JSON
+    # Step 6: Save structured JSON output
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = os.path.join("outputs", f"embedding_variance_{ts}.json")
     payload = {
