@@ -1,4 +1,7 @@
 # scripts/test_feature_extraction.py
+# This script tests the embedding-based uncertainty features: variance and entropy.
+# It creates synthetic embeddings and computes their uncertainty measures for validation.
+
 import os
 os.environ["TRANSFORMERS_NO_TF"] = "1"
 
@@ -8,10 +11,11 @@ from utils.arg_parser import get_args
 
 
 def test_feature_extraction(num_neighbors):
-    # Simulated input
+    """Simulate embedding features and print their variance and entropy."""
+    # Create a dummy embedding (dimension = 3)
     embedding = np.array([0.1, 0.2, 0.3])
 
-    # Create `num_neighbors` neighbor embeddings of dim 3
+    # Generate random neighbors around it
     rng = np.random.default_rng(seed=42)
     neighbors = rng.normal(loc=0.2, scale=0.05, size=(num_neighbors, 3))
 
