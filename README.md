@@ -49,3 +49,46 @@ for i in 1...N:
     Query oracle for true labels
     Add labeled samples to L
     Retrain classifier Cᵢ
+
+## How to Run
+
+You can reproduce the full pipeline using the following commands step-by-step:
+
+```bash
+# Clone the repository
+git clone https://github.com/Noor-Abu-Elhija/Detecting-hallucinations-using-active-learning.git
+cd Detecting-hallucinations-using-active-learning
+
+# Create and activate the Conda environment
+conda env create -f environment.yml
+conda activate project
+
+# Run uncertainty metric evaluation (Entropy, Semantic Entropy, etc.)
+python scripts/run_eval.py \
+  --index_dir indexes/squad_v2 \
+  --save_json out/all_test_results_1_temp.json \
+  --embed_model all-mpnet-base-v2 \
+  --num_generations 5 \
+  --num_of_question 800 \
+  --temperature 1 \
+  --max_new_tokens 50 \
+  --ann_threshold 0.55 \
+  --k 3 \
+  --metric all 
+
+
+# Run the Active Learning loop
+python src/active_selector.py \
+  --dataset datasets/squad_train.json \
+  --initial_labels datasets/labeled_seed.json \
+  --metric SemanticEntropy \
+  --iterations 5 \
+  --batch_size 20 \
+  --output out/active_learning_results.json
+
+
+#  View outputs
+# Results are saved under:
+# out/
+
+
