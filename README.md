@@ -68,7 +68,7 @@ conda activate project
   --metric all
 ```
 # Run uncertainty metric evaluation (Entropy, Semantic Entropy, etc.)
-
+```bash
 python -u scripts/run_eval.py \
   --index_dir indexes/squad_v2 \
   --save_json out/all_test_results_1_temp.json \
@@ -82,16 +82,9 @@ python -u scripts/run_eval.py \
   --metric all
 ```
 
-#  Run the Active Learning loop
+#  Run the Active Learning loop (output data file and what metric to use)
 ```bash
-python src/active_selector.py \
-  --dataset datasets/squad_train.json \
-  --initial_labels datasets/labeled_seed.json \
-  --metric SemanticEntropy \
-  --iterations 5 \
-  --batch_size 20 \
-  --output out/active_learning_results.json
-  --metric all
+python3 run_active_learning_final.py --data-file all_test_results_1_temp.json --metric weighted_variance  
 ```
 # View outputs
 # Results are saved under:
